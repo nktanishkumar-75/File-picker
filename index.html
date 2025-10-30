@@ -3,33 +3,35 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>LifeTrack Dashboard</title>
+<title>Medical File Upload</title>
 <style>
   body { font-family: Arial, sans-serif; margin:20px; background:#f8fafc; color:#111; }
-  .header { display:flex; align-items:center; justify-content:space-between; }
   .btn { padding:10px 16px; border:none; border-radius:8px; background:#5063f2; color:#fff; font-weight:bold; cursor:pointer; }
   #fileList { margin-top:20px; padding:10px; border:1px solid #ddd; border-radius:8px; background:#fff; display:none; }
-  .file-row { margin:6px 0; padding:6px; border-bottom:1px dashed #eee; }
+  .file-row { display:flex; justify-content:space-between; align-items:center; padding:6px; border-bottom:1px dashed #eee; }
+  .file-meta { font-size:12px; color:#555; }
+  .file-row button { margin-left:8px; padding:4px 8px; border:none; border-radius:6px; cursor:pointer; }
+  .view-btn { background:#2b6ef6; color:#fff; }
+  .remove-btn { background:#ef4444; color:#fff; }
 </style>
 </head>
 <body>
-  <div class="header">
-    <h2>LifeTrack Dashboard</h2>
-    <button class="btn" onclick="openFilePicker()">📂 Upload Medical Files</button>
-  </div>
+  <h2>📂 Upload Medical Files</h2>
+  <button class="btn" onclick="openFilePicker()">Select Files</button>
 
   <!-- Hidden input for browsers -->
   <input id="fileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt" multiple style="display:none"/>
   <div id="fileList"></div>
 
 <script>
+let selectedFiles = [];
+
+// Open picker
 function openFilePicker(){
-  // Try browser file input first
   const input = document.getElementById('fileInput');
   try {
     input.value = '';
     input.click();
-    // If WebViewer blocks it, also send request to App Inventor
     setTimeout(()=> {
       if(!input.files.length){
         sendToAppInventor({action:"REQUEST_FILE_PICKER"});
@@ -40,22 +42,54 @@ function openFilePicker(){
   }
 }
 
-// Handle browser file selection
+// Handle browser selection
 document.getElementById('fileInput').addEventListener('change', function(){
   const files = Array.from(this.files || []);
   if(!files.length) return;
-  displayFiles(files.map(f=>({name:f.name, size:f.size, type:f.type})));
-  sendToAppInventor({medicalFiles: files.map(f=>({name:f.name, size:f.size, type:f.type}))});
+  selectedFiles = selectedFiles.concat(files);
+  displayFiles(selectedFiles);
+  sendToAppInventor({medicalFiles: selectedFiles.map(f=>({name:f.name, size:f.size, type:f.type}))});
 });
 
-// Display file list
+// Display list
 function displayFiles(list){
   const box = document.getElementById('fileList');
   box.style.display = 'block';
-  box.innerHTML = list.map(f=>`<div class="file-row"><b>${f.name}</b> — ${Math.round(f.size/1024)} KB • ${f.type||'unknown'}</div>`).join('');
+  box.innerHTML = '';
+  list.forEach((f, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <div>
+        <div><b>${f.name}</b></div>
+        <div class="file-meta">${Math.round(f.size/1024)} KB • ${f.type||'unknown'}</div>
+      </div>
+    `;
+    const actions = document.createElement('div');
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'view-btn';
+    viewBtn.textContent = 'View';
+    viewBtn.onclick = ()=> {
+      const url = URL.createObjectURL(f);
+      window.open(url, '_blank');
+      setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    };
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = ()=> {
+      selectedFiles.splice(idx,1);
+      displayFiles(selectedFiles);
+      sendToAppInventor({medicalFiles: selectedFiles.map(x=>({name:x.name,size:x.size,type:x.type}))});
+    };
+    actions.appendChild(viewBtn);
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
+    box.appendChild(row);
+  });
 }
 
-// Send JSON to App Inventor bridge
+// Send JSON to App Inventor
 function sendToAppInventor(obj){
   const json = JSON.stringify(obj);
   try{ if(window.AppInventor) window.AppInventor.setWebViewString(json); }catch(e){}
@@ -63,14 +97,6 @@ function sendToAppInventor(obj){
   try{ if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.AppInventor) window.webkit.messageHandlers.AppInventor.postMessage(json); }catch(e){}
   console.log("Sent to AppInventor:", json);
 }
-
-// Listen for App Inventor sending back file metadata
-window.addEventListener("message", function(e){
-  try{
-    const data = JSON.parse(e.data);
-    if(data.medicalFiles) displayFiles(data.medicalFiles);
-  }catch(err){}
-});
 </script>
 </body>
 </html>
