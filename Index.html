@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LifeTrack Dashboard</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:20px; background:#f8fafc; color:#111; }
+  .header { display:flex; align-items:center; justify-content:space-between; }
+  .btn { padding:10px 16px; border:none; border-radius:8px; background:#5063f2; color:#fff; font-weight:bold; cursor:pointer; }
+  #fileList { margin-top:20px; padding:10px; border:1px solid #ddd; border-radius:8px; background:#fff; display:none; }
+  .file-row { margin:6px 0; padding:6px; border-bottom:1px dashed #eee; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h2>LifeTrack Dashboard</h2>
+    <button class="btn" onclick="openFilePicker()">📂 Upload Medical Files</button>
+  </div>
+
+  <!-- Hidden input for browsers -->
+  <input id="fileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt" multiple style="display:none"/>
+  <div id="fileList"></div>
+
+<script>
+function openFilePicker(){
+  // Try browser file input first
+  const input = document.getElementById('fileInput');
+  try {
+    input.value = '';
+    input.click();
+    // If WebViewer blocks it, also send request to App Inventor
+    setTimeout(()=> {
+      if(!input.files.length){
+        sendToAppInventor({action:"REQUEST_FILE_PICKER"});
+      }
+    }, 800);
+  } catch(e){
+    sendToAppInventor({action:"REQUEST_FILE_PICKER"});
+  }
+}
+
+// Handle browser file selection
+document.getElementById('fileInput').addEventListener('change', function(){
+  const files = Array.from(this.files || []);
+  if(!files.length) return;
+  displayFiles(files.map(f=>({name:f.name, size:f.size, type:f.type})));
+  sendToAppInventor({medicalFiles: files.map(f=>({name:f.name, size:f.size, type:f.type}))});
+});
+
+// Display file list
+function displayFiles(list){
+  const box = document.getElementById('fileList');
+  box.style.display = 'block';
+  box.innerHTML = list.map(f=>`<div class="file-row"><b>${f.name}</b> — ${Math.round(f.size/1024)} KB • ${f.type||'unknown'}</div>`).join('');
+}
+
+// Send JSON to App Inventor bridge
+function sendToAppInventor(obj){
+  const json = JSON.stringify(obj);
+  try{ if(window.AppInventor) window.AppInventor.setWebViewString(json); }catch(e){}
+  try{ if(window.WebViewInterface) window.WebViewInterface.postMessage(json); }catch(e){}
+  try{ if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.AppInventor) window.webkit.messageHandlers.AppInventor.postMessage(json); }catch(e){}
+  console.log("Sent to AppInventor:", json);
+}
+
+// Listen for App Inventor sending back file metadata
+window.addEventListener("message", function(e){
+  try{
+    const data = JSON.parse(e.data);
+    if(data.medicalFiles) displayFiles(data.medicalFiles);
+  }catch(err){}
+});
+</script>
+</body>
+</html>
